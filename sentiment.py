@@ -71,3 +71,32 @@ def label_for(value):
     if value <= -THRESHOLD:
         return "negative"
     return "neutral"
+
+
+def main(argv=None):
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="Score the sentiment of text.")
+    parser.add_argument("text", nargs="?", help="text to analyze")
+    parser.add_argument("-f", "--file", help="analyze each line of a file")
+    parser.add_argument("--lexicon", default=DEFAULT_LEXICON, help="path to a JSON lexicon")
+    args = parser.parse_args(argv)
+
+    analyzer = SentimentAnalyzer(load_lexicon(args.lexicon))
+    if args.text is not None:
+        lines = [args.text]
+    elif args.file:
+        with open(args.file, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    else:
+        lines = sys.stdin.read().splitlines()
+
+    for line in filter(str.strip, lines):
+        result = analyzer.analyze(line)
+        print(f"{result['label']:<8} {result['score']:+6.2f}  {line}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
