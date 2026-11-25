@@ -1,6 +1,10 @@
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from pathlib import Path
 
-from sentiment import SentimentAnalyzer, tokenize
+from sentiment import SentimentAnalyzer, load_lexicon, main, tokenize
 
 LEXICON = {"good": 2.0, "bad": -2.0, "love": 3.0}
 
@@ -46,6 +50,54 @@ class SentimentAnalyzerTest(unittest.TestCase):
 
     def test_default_lexicon_loads(self):
         self.assertEqual(SentimentAnalyzer().label("What an amazing day"), "positive")
+
+
+class LoadLexiconTest(unittest.TestCase):
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+
+    def write(self, content):
+        path = self.dir / "lexicon.json"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_lowercases_words(self):
+        self.assertEqual(load_lexicon(self.write('{"Good": 2}')), {"good": 2.0})
+
+    def test_invalid_lexicons_raise_value_error(self):
+        for content in ("not json", '["good"]', '{"good": "yes"}'):
+            with self.subTest(content=content), self.assertRaises(ValueError):
+                load_lexicon(self.write(content))
+
+
+class CliTest(unittest.TestCase):
+
+    def run_main(self, argv):
+        stdout, stderr = StringIO(), StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(argv)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_scores_text_argument(self):
+        code, out, _ = self.run_main(["This is very good"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "positive  +3.00  This is very good\n")
+
+    def test_missing_file_is_reported(self):
+        code, out, err = self.run_main(["-f", "does-not-exist.txt"])
+        self.assertEqual(code, 1)
+        self.assertIn("Error:", err)
+
+    def test_bad_lexicon_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lexicon = Path(tmp, "bad.json")
+            lexicon.write_text("[]", encoding="utf-8")
+            code, _, err = self.run_main(["good", "--lexicon", str(lexicon)])
+        self.assertEqual(code, 1)
+        self.assertIn("JSON object", err)
 
 
 if __name__ == "__main__":

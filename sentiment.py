@@ -25,8 +25,18 @@ def tokenize(text):
 
 
 def load_lexicon(path=DEFAULT_LEXICON):
+    """Load a JSON object mapping words to numeric scores."""
     with open(path, encoding="utf-8") as f:
-        return {word.lower(): float(score) for word, score in json.loads(f.read()).items()}
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{path}: invalid JSON ({e})") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: lexicon must be a JSON object mapping words to scores")
+    try:
+        return {word.lower(): float(score) for word, score in data.items()}
+    except (TypeError, ValueError):
+        raise ValueError(f"{path}: every lexicon score must be a number") from None
 
 
 class SentimentAnalyzer:
@@ -83,14 +93,18 @@ def main(argv=None):
     parser.add_argument("--lexicon", default=DEFAULT_LEXICON, help="path to a JSON lexicon")
     args = parser.parse_args(argv)
 
-    analyzer = SentimentAnalyzer(load_lexicon(args.lexicon))
-    if args.text is not None:
-        lines = [args.text]
-    elif args.file:
-        with open(args.file, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-    else:
-        lines = sys.stdin.read().splitlines()
+    try:
+        analyzer = SentimentAnalyzer(load_lexicon(args.lexicon))
+        if args.text is not None:
+            lines = [args.text]
+        elif args.file:
+            with open(args.file, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        else:
+            lines = sys.stdin.read().splitlines()
+    except (OSError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     for line in filter(str.strip, lines):
         result = analyzer.analyze(line)
